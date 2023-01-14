@@ -1,0 +1,773 @@
+---
+title: "BT1101 Descriptive + Predictive Analytics"
+author: "Ryan Tan Yan Tong"
+date: "2022-11-18"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+    toc_depth: 4
+    theme: lumen
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Code Cheatsheet
+Code | 
+--- | --- 
+mutate | adds new variables + Preserve existing variables
+transmute | adds new variables + Drops existing variables
+
+## Libraries
+
+```{r libraries, echo = FALSE, message = FALSE}
+library("tidyr")
+library("psych")
+library("RColorBrewer")
+library("rcompanion")
+library("rstatix")
+# Ensure the libraries are loaded in this EXACT order -> So that the dplyr functions load properly
+library("tidyverse")
+library("rpivotTable")
+library("knitr")
+library("dplyr") #need to call the library before you use the package
+library("caret")
+library(factoextra) # for fviz_cluster()
+library(wooldridge)
+library(car)
+library(lpSolve)
+data(smoke)
+data('gpa2')
+
+library(readxl)
+CR <- read_excel("/Users/ryantan/Downloads/NUS/Y1S1/BT1101/Tutorial\ 3\ -\ Data\ Exploration\ and\ Visualisation/Bank Credit Risk Data.xlsx", sheet = "Base Data", skip = 2)
+ds_salaries <- read_csv('/Users/ryantan/Downloads/NUS/Y1S1/BT1101/Tutorial\ 3\ -\ Data\ Exploration\ and\ Visualisation/ds_salaries.csv',
+                        col_names = TRUE,
+                        col_types = c("i", "f", "f", "c", "n", "f", "num", "f", "f", "f", "f"))
+
+# Limit number of lines of output -> IGNORE
+hook_output <- knit_hooks$get("output")
+knit_hooks$set(output = function(x, options) {
+  lines <- options$output.lines
+  if (is.null(lines)) {
+    return(hook_output(x, options))  # pass to default hook
+  }
+  x <- unlist(strsplit(x, "\n"))
+  more <- "..."
+  if (length(lines)==1) {        # first n lines
+    if (length(x) > lines) {
+      # truncate the output, but add ....
+      x <- c(head(x, lines), more)
+    }
+  } else {
+    x <- c(more, x[lines], more)
+  }
+  # paste these lines together
+  x <- paste(c(x, ""), collapse = "\n")
+  hook_output(x, options)
+})
+```
+
+
+## Descriptive Analytics / Data Visualisation
+
+### Kable 
+```{r kable, echo = TRUE}
+# Variables to change
+# CR -> dataset
+# housingFreq -> May or may not be changed (NOT critical)
+# caption -> Heading for pie chart
+# col.names -> Column names
+housingFreq <- CR %>% count(Housing)
+kable(housingFreq, caption = "Housing",
+                   col.names = c("House Ownership Status", "Number of Bank Customers"))
+```
+### Pie Chart
+```{r pieChart, echo = TRUE}
+# Variables to Change:
+# CR -> dataset
+# housingFreq -> May or may not be changed (NOT critical)
+# main -> Heading for pie chart
+housingFreq <- CR %>% count(Housing)
+
+pie_perc <- 100 * round(housingFreq$n/sum(housingFreq$n), 3)
+label <- paste(housingFreq$Housing, 
+               ",",
+               pie_perc,
+               "%",
+               sep = "")
+pie(housingFreq$n,
+     labels = label,
+     col = c("darkorange", "darkorange3", "darkorange4"),
+     main = "Housing")
+```
+
+### Bar Chart
+```{r barChart, echo = TRUE}
+# Variables to change:
+# CR -> dataframe
+# housingFreq -> variable name (NOT critical)
+# Housing -> Name of variable you're counting
+# labels
+housingFreq <- CR %>% count(Housing)
+barplot(housingFreq$n,
+        names.arg = housingFreq$Housing,
+        col = rainbow(5),
+        main = "Frequency Distribution of Housing Owners",
+        xlab = "House Owners",
+        ylab = "Number of People")
+```
+
+### Grouped Bar Chart
+```{r groupedBarChart, echo = TRUE}
+# What is Beside : Credit Risk
+
+# Variables to change:
+# Job -> Columns of the bar chart
+# Credit Risk -> Groups of bars
+# labels
+# frequency distribution of (x) for (y) -> group_by(x) %>% count(y)
+
+# Get Credit Risk grouped by Jobs
+creditByJob <- CR %>% group_by(Job) %>% count(`Credit Risk`)
+# Key is the group, value is count variable
+creditByJob_spread <- creditByJob %>% spread(key = Job, value = n)
+# kable(creditByJob_spread, caption = "Pivot table for Credit Risk and Job")
+barplot(as.matrix(creditByJob_spread[,2:5]), # So that the column names are not used
+        beside = TRUE,
+        col = c("firebrick2", "darkorange4"),
+        ylim = c(0, 140),
+        main = "Credit Risk By Job Positions of Customers",
+        ylab = "No. of Customers",
+        xlab = "Job Positions")
+legend("topleft",
+       fill = c("firebrick2", "darkorange4"),
+       legend = creditByJob_spread$`Credit Risk`)
+```
+
+### Histogram
+```{r histogram, echo = TRUE}
+# Variables to change:
+# EVERYTHING
+# CR -> dataset
+# savings -> Variable name
+# main / xlab / ylab / col / ylim -> labels
+savings <- hist(CR$Savings, 
+                main = "Histogram of Savings",
+                xlab = "Savings Amount",
+                ylab = "Number of Customers", 
+                col = "darkorange",
+                ylim = c(0, 1800),
+                labels = TRUE)
+```
+
+### Histogram Table
+```{r histogramTable, echo = TRUE}
+# Variables to change:
+# CR$Savings -> variable
+# savings -> histogram variable
+# savingsCut (NOT critical)
+# caption -> Label
+savingsCut <- cut(CR$Savings, 
+                  savings$breaks, 
+                  include.lowest = TRUE)
+savingsTable <- table(savingsCut)
+kable(savingsTable,
+      caption = "Frequency distribution by Savings")
+```
+
+### Density Plot
+```{r densityPlot, echo = TRUE}
+options(scipen = 999)
+plot(density(CR$Savings), 
+     main = "Distribution of Savings Amount")
+```
+
+### Commands for graphs to help
+
+Commands for graphs | 
+--- | --- 
+horiz = TRUE | Vertical Bars -> Horizontal Bars
+cex.names = 0.55 | Scale font size of axis labels to 0.55
+cex.axis = 0.55 | Scale numeric labels of axes to 0.55
+las = 1 | Numeric labels on y-axis orientated to normal way
+legend.text = unlist(randSpread[, 2:4]) | Add legend labels for grouped bar chart
+legend("topleft") | Legend on top left
+legend(..., fill = c(""), legend = labels) | 2 other legend arguments necessary
+options(scipen = 999) | Increase no. of digits shown
+
+### Statistics
+```{r stats, echo = TRUE}
+# Helpful Code
+# agegp <- factor(ifelse(SK$age < 30, 1, ifelse(SK$age <= 48, 2, 3)), levels = c(1, 2, 3), ordered = TRUE)
+describe(ds_salaries$salary)[,c("n","mean","sd","median","skew","kurtosis")]
+# Skewness:
+#   -ve: Left-skewed
+#   |CS|>1: High degree of skewness
+#   1>|CS|>0.5: Moderate degree of skewness
+#   0.5>|CS|: Relative symmetry
+# Kurtosis:
+#   CK > 3: Somewhat peaked, Low degree of dispersion
+#   CK < 3: Somewhat flat, High degree of dispersion
+quantile(ds_salaries$salary, c(.25, .5, .75,1))
+```
+
+### Pareto Analysis
+```{r pareto, echo = TRUE}
+# Variables to change :
+# ds_salaries -> dataset
+# salary_in_usd -> variable for analysis
+# (cum_)salary_frac (NOT critical)
+# 0.8 -> Whatever percentage is required
+cum_salary <- ds_salaries %>% transmute(salary_frac = salary_in_usd / sum(salary_in_usd)) %>% 
+                              arrange(desc(salary_frac)) %>% 
+                              mutate(cum_salary_frac = cumsum(salary_frac))
+# Number that contributes to 80%
+cumNum <- which(cum_salary$cum_salary_frac>0.8)[1]
+cumPerc <- cumNum / nrow(cum_salary)
+cumNum
+cumPerc
+
+# Plot graph if required
+# plot(cum_salary$cum_salary_frac, type = "n")
+# lines(cum_salary$cum_salary_frac)
+```
+
+### Correlation Matrix
+- ___ has a (strong), (positive), (linear) correlation with ___.
+```{r corr, echo = TRUE}
+cor(mtcars)
+corr.test(ds_salaries$salary, as.numeric(ds_salaries$remote_ratio))
+```
+
+## Predictive Analytics
+
+Refer to flowchart:
+![Test Statistics and when to use them](/Users/ryantan/Downloads/NUS/Y1S1/BT1101/Hypo Testing.png)
+
+### Intervals
+
+#### Outlier Analysis
+- It can be seen that the graph is rather (right) skewed, indicating that there may be a few outlier values where the (customer income) is very (high).
+- It can be seen that there are 2 extreme outliers in the data where ____ is (), which is greater than 3 intequartile ranges from the median
+- However, as this value is a relatively reasonable value for () to have, even though the () is an outlier to the data, it is not advisable to remove him/her from the data set as he/she may provide valuable data in other categories. As such, I beleive this data set does not have any outliers.
+```{r outliers, echo = TRUE}
+par(mfrow=c(1,3)) #this function makes plots below be displayed together
+hist(ds_salaries$salary,
+     labels = TRUE,
+     #xlim = c(20000,120000),
+     #ylim = c(0,60),
+     main = "Distribution of salaries",
+     xlab = "Salary")
+extreme <- boxplot(ds_salaries$salary, range = 3)
+mild <- boxplot(ds_salaries$salary, range = 1.5)
+extreme$out
+mild$out
+```
+
+#### Normality Checks {#normality}
+- Quick link to <a href="#More than 2-sample">ANOVA</a>
+- Just one of the charts is sufficient
+- An ANOVA test is to be conducted to determine if there is any difference in mean (income). 
+  - Firstly, the normality of () was plotted out using a (histogram) and a Shapiro-Wilks test was conducted on the ().
+  - With all the () showing a W statistic value greater than 0.9, as well as each histogram looking relatively normal, it can be concluded that the () is normally distributed.
+  - When conducting the Fligner-Killeen test, it can be seen with a p-value of (), that there is (sufficient evidence) to suggest that the variance between the () is different.
+  - From the Welch ANOVA test, it can be seen with a p-value of () that there is (sufficient evidence to reject the null hypothesis in favour of the alternate hypothesis) and conclude that ___
+  - To identify this, a Games-Howell post-hoc test was conducted. From the results, it can be seen that the with a p-value of () for the pairwise test between () and (), there is (insufficient evidence to suggest) that (mean ___) is different.
+```{r normality, echo = TRUE}
+# Check for outliers first
+par(mfrow=c(1,2))
+extreme <- boxplot(ds_salaries$salary, range = 3)
+mild <- boxplot(ds_salaries$salary, range = 1.5)
+extreme$out
+mild$out
+
+# Check for normality with charts
+qqnorm(ds_salaries$salary, ylab = "Sample quantiles for Age")
+qqline(ds_salaries$salary, col = 'red')
+
+plot(density(ds_salaries$salary), 
+     main = "Distribution of salaries")
+
+# Shapiro-Wilk Test
+shapiro.test(ds_salaries$salary)
+```
+
+#### Prediction Interval
+- NOTE: PI formula is different from CI formula
+```{r predictionInt, echo = TRUE}
+# Variables to change : 
+# ds_salaries -> dataset
+# ds_salaries$salary
+
+# Transform to normal distribution
+par(mfrow=c(1,3))
+normSal <- transformTukey(ds_salaries$salary, plotit = TRUE)
+
+# Calculate 95% Prediction Interval
+m_salary  <- mean(normSal)
+sd_salary <- sd(normSal)
+
+PI95normLow <- m_salary + (qt(0.025, df = (nrow(ds_salaries) - 1)) * sd_salary * sqrt(1+ 1/nrow(ds_salaries)))
+PI95normUp  <- m_salary + (qt(0.975, df = (nrow(ds_salaries) - 1)) * sd_salary * sqrt(1+ 1/nrow(ds_salaries)))
+
+PI95Low <- (-PI95normLow)^ (1 / -0.175) # Formatting is required cos negative numbers cannot be raised to fractions
+PI95Up  <- (-PI95normUp) ^ (1 / -0.175)
+
+print(cbind(PI95Low, PI95Up), digits = 4)
+```
+
+#### Confidence Interval / One sample Hypo Testing
+
+##### z-value (Known population s.t.d.)
+```{r confidenceInt, echo = TRUE}
+m_salary  <- mean(ds_salaries$salary)
+sd_salary  <- sd(ds_salaries$salary)
+
+CI95Low <- m_salary + qnorm(0.025) * sd_salary/sqrt(nrow(ds_salaries))
+CI95Up  <- m_salary + qnorm(0.975) * sd_salary/sqrt(nrow(ds_salaries))
+print(cbind(CI95Low, CI95Up), digits = 4)
+```
+
+##### t-value (unknown population s.t.d.)
+```{r tvalCI, echo = TRUE}
+m_salary  <- mean(ds_salaries$salary)
+sd_salary  <- sd(ds_salaries$salary)
+
+CI95Low <- m_salary + qt(0.025, df = nrow(ds_salaries) - 1) * sd_salary/sqrt(nrow(ds_salaries))
+CI95Up  <- m_salary + qt(0.975, df = nrow(ds_salaries) - 1) * sd_salary/sqrt(nrow(ds_salaries))
+print(cbind(CI95Low, CI95Up), digits = 4)
+```
+
+##### proportion interval
+```{r proportion, echo = TRUE}
+highSal <- nrow(ds_salaries %>% filter(salary > 100000))
+propSal <- highSal / nrow(ds_salaries)
+
+propSalLow <- propSal + (qnorm(0.025)*sqrt(propSal*(1-propSal)/nrow(ds_salaries)))
+propSalUp  <- propSal + (qnorm(0.975)*sqrt(propSal*(1-propSal)/nrow(ds_salaries)))
+print(cbind(propSalLow, propSalUp), digits = 4)
+```
+
+##### proportion hypo testing
+```{r proportionHypo, echo = TRUE}
+# Assume Proportion is that, 
+#   then proportion of current sample -> how unlikely to get
+# This example tests for proportion of population = 0.1
+highSal <- nrow(ds_salaries %>% filter(salary > 100000))
+propSal <- highSal / nrow(ds_salaries)
+z <- (propSal - 0.1) / sqrt(0.1 * (1 - 0.1) / nrow(ds_salaries))
+z
+qnorm(0.05)
+```
+Since proportion of sample is >> 0.1, 2 conclusions
+1.) z-statistic provides evidence that proportion > 0.1 (qnorm(0.95))
+2.) insufficient evidence to reject H0 that proportion is at least 10% (qnorm(0.05))
+
+#### Hypothesis Testing
+
+##### Two-sample t-test
+```{r oneSamp, echo = TRUE}
+# 2 separate variables
+t.test(trees$Girth, trees$Volume, alternative = "less")
+
+# Filter so that dataframe has just 2 factor variables for that column
+ds_salaries_2factor <- ds_salaries %>% filter(employment_type %in% c("FT", "PT"))
+t.test(salary~employment_type, data = ds_salaries_2factor)
+```
+- The t-statistic is 3.2544 with p-value of 0.001496. Since p-value<0.05, we can conclude that there is a significant difference between the mean salaries of FT and PT.
+
+##### More than 2-sample
+- Do <a href="#Normality Checks">normality checks</a> first
+- Equal Variance
+- Welch-ANOVA
+
+###### Welch-ANOVA
+```{r welchANOVA, echo = TRUE}
+# Check for normality -> As above
+
+# Equal Variance Check
+smoke$ageGrp <- factor(ifelse(smoke$age < 30, 1, ifelse(smoke$age <= 48, 2, 3)), levels = c(1, 2, 3), ordered = TRUE)
+# Normal Distribution
+bartlett.test(cigs~ageGrp, data = smoke)
+# Not Normal
+fligner.test(cigs~ageGrp, data = smoke)
+
+# Welch-ANOVA
+welch_anova_test(cigs~ageGrp, data = smoke)
+# Welch-anova post-hoc: Games Howell
+games_howell_test(cigs~ageGrp, data = smoke)
+```
+- Only p-value is important for the fligner test
+- Since the p-value for the welch ANOVA test is 0.145 > 0.05, there is insufficient evidence to reject H0
+
+###### ANOVA
+```{r ANOVA, echo = TRUE}
+aovRes <- aov(cigs~ageGrp, data = smoke)
+summary(aovRes)
+TukeyHSD(aovRes)
+```
+
+### Linear Models
+
+- Y = b0 + b1 * X + e : Need to type out e (error term) as well for full equation
+- Marginal Effect
+  - For every unit increase increase in (), the () increases / decreases by () on average, holding all other variables constant.
+- Significant
+  - Since t-value is () with a large magnitude and p-value is () < 0.05, there is enough evidence to support the alternate hypothesis that the coefficient of () is statistically different from zero. This means that () is significantly associated with ().
+  - Since t-value is () with a small magnitude and p-value is () > 0.05, there is insufficient evidence to reject the null hypothesis that the coefficient of () is statistically different from zero. This means that () is statistically insignificant and is not significantly associated with ().
+- F-test
+  - The p-value associated to this coefficient is smaller than 0.05 which shows that this coefficient is significantly different from 0 at a 95% confidence level
+  - H0: All slope parameters are zero
+  - H1: At least one of the slope paramters is nonzero.
+  
+
+#### Simple LM
+```{r simpleLM, echo = TRUE}
+options(scipen = 5)
+summary(lm(durat~tserved, recid))
+```
+
+#### Multivariate LM
+```{r multiLM, echo = TRUE}
+fit_d = lm(durat ~ tserved + drugs + alcohol + priors + workprg, data = recid)
+summary(fit_d)
+```
+
+#### Prediction
+```{r prediction, echo = TRUE}
+fit_f = lm(follow ~ rules + age + tserved + married,  data = recid)
+newoffender = data.frame(rules = 0, age = 32*12, tserved = 3*12+7, married = 1)
+predict(fit_f, newdata = newoffender)
+```
+
+
+#### Assumptions:
+![Linear Model Assumptions](/Users/ryantan/Downloads/NUS/Y1S1/BT1101/LM Assumptions.png)
+
+##### Linear Relationship
+```{r linModLinAssum, echo = TRUE}
+plot(recid$tserved, recid$durat)
+```
+
+- Check if the relationship is linear through scatterplot
+
+##### Residual Assumptions
+```{r linModResidAssum, echo = TRUE}
+par(mfrow = c(1,2))
+plot(fit_d, 1)
+plot(fit_d, 2)
+```
+
+- From the residual plot, we can see a significant decreasing pattern of residuals when fitted value gets larger.
+  - This implies not only autocorrelation but a strong correlation between the residuals and fitted value y^ or implicitly some of independent variables X’s as well.
+  - The latter is more sever, violating assumption of mean-zero error.
+  - The OLS estimator is not valid, in terms of (1) biased estimate and (2) wrong standard error and invalid inference.
+- Residual Q-Q plot also shows that the plot is tilted away from 45 degree line
+  - violating the assumption that the error follows a normal distribution
+- Note: The failure of mean-zero error is likely due to missing variables, i.e. some key variables that are unobserved (thus left in the error term) to us but correlate with independent variables X’s. More inspection thus is needed to draw a valid conclusion.
+
+
+#### GLM (Generalised Linear Model)
+- Prediction of binary variable (Success / Failure)
+```{r glm, echo = TRUE}
+logit_s = glm(super ~ rules + age + tserved + married + black, 
+              data = recid,
+              family = binomial)
+summary(logit_s)
+```
+
+##### GLM Prediction
+- Marginal Effect: A unit increase in () is associated with log-odds of () increasing / decreasing on average, keeping all other variables constant.
+```{r glmPred, echo = TRUE}
+newclient = data.frame(rules = 0, age = 46*12, tserved = 3*12+7, married = 1, black = 0)
+predict(logit_s, 
+        type = 'response',
+        newdata = newclient)
+```
+
+### Time Series
+- Trivial: Addition of time trend variable to linear model
+- SMA / EMA
+
+``` {r importFertil, echo = FALSE}
+data('fertil3')
+# if you want, is can be converted to ts object
+fertil = ts(fertil3, frequency = 1, start = 1913)
+```
+
+#### SMA
+- Predicted values are just the rows (Last row is last predicted value, ...)
+```{r SMA, echo = TRUE}
+gfrsg <- as.data.frame(fertil)$gfr
+gfrsg4 <- TTR::SMA(gfrsg, n = 4)
+ts_comb <- cbind(gfrsg, gfrsg4)
+ts.plot(ts_comb, gpars = list(xlab = "year", 
+                              ylab = "Fertility Rate, SG", 
+                              col = c("blue", "red")))
+# legend("topright",
+#        fill = c("blue", "red"),
+#        legend = c("Original", "SMA 4"))
+```
+
+#### EMA
+- Trend: Long-term increase / decrease
+- Seasonal: Patterns repeat at certain lengths of intervals
+- Cyclical: Long-term pattern with no fixed intervals
+
+##### Plot / Predict
+```{r EMA, echo = TRUE}
+# Single EMA
+gfrsgEMA <- HoltWinters(gfrsg, 
+                        beta = FALSE, # (ONLY FALSE FOR SINGLE)
+                        gamma = FALSE, # (ONLY FALSE FOR DOUBLE & SINGLE)
+                        )
+gfrsgEMA
+# gfrsgEMA$SSE
+gfrsgPredict <- predict(gfrsgEMA, n.ahead = 4)
+plot(gfrsgEMA, gfrsgPredict)
+gfrsgPredict[1]
+```
+
+##### Root Mean Squared Error
+```{r RMSE, echo = TRUE}
+err <- as.numeric(gfrsgPredict[1:4] - 
+                    gfrsg[(length(gfrsg)-3):length(gfrsg)])
+rmse <- sqrt(mean(err^2))
+rmse
+```
+
+### Data Mining / Optimal Model Selection
+
+#### Linear Hypothesis
+- p-value of the F-statistic is small < 0.05, providing sufficient evidence to reject the null hypothesis that the unrestricted model is not significantly better than the restricted one in terms of explanatory power for Y
+```{r linHypo, echo = TRUE}
+linMod <- lm(durat ~ tserved + drugs + alcohol + priors + workprg, data = recid)
+linearHypothesis(linMod,
+								 c("drugs=0", "priors=0")) # restricted model
+```
+
+#### K-means clustering
+- If the variables are on very different scales, need to standardise first (to mean 0, sd 1)
+- There is a clear elbow at n = 2 clusters
+- There are n clusters, with different preferences
+  - Cluster 1 will have more (), more (), less (), ...
+```{r kmeans, echo = TRUE}
+kmeans(mtcars, centers = 3, nstart=10)
+
+clusters <- rep(NA, 10)
+for (k in c(1:10)) {
+	clusters[k] = kmeans(mtcars, k, nstart=10)$tot.withinss
+}
+plot(clusters, type="b")
+
+kmeans_opt <- kmeans(mtcars, 2, nstart=10)
+kmeans_opt$centers
+# To plot the clusters for the specific kmeans()
+fviz_cluster(kmeans_opt, 
+						 data = mtcars, 
+						 ggtheme = theme_minimal(),
+						 main = "whatever title")
+```
+
+#### Stepwise Regression
+
+##### Backward Stepwise Regression
+```{r backStep, echo = TRUE, output.lines = 4}
+linMod <- lm(colgpa ~ . - colgpa, data = gpa2)
+step(linMod, direction = "backward")
+```
+
+##### Forward Stepwise Regression
+```{r forStep, echo = TRUE, output.lines = 4}
+linMod <- lm(colgpa ~ . - colgpa, data = gpa2)
+kitSink <- lm(colgpa ~ 1, data = gpa2)
+step(kitSink, scope = formula(linMod), direction = "forward")
+# step(kitSink, scope = colgpa ~ . - colgpa, direction = "forward")
+```
+
+#### Principle Component Analysis (PCA)
+
+```{r PCA, echo = TRUE}
+gpa2Num <- gpa2 %>% select(-colgpa, -athlete, -female, -white, -black)
+gpa2pca <- prcomp(gpa2Num, 
+                  center = TRUE, 
+                  scale = TRUE) # scale = TRUE standardises the predictors, making them comparable
+summary(gpa2pca)
+
+# Load all PC into the df
+gpa2$pc1 <- gpa2pca$x[,"PC1"]
+gpa2$pc2 <- gpa2pca$x[,"PC2"]
+gpa2$pc3 <- gpa2pca$x[,"PC3"]
+gpa2$pc4 <- gpa2pca$x[,"PC4"]
+gpa2$pc5 <- gpa2pca$x[,"PC5"]
+
+gpa2pca$rotation
+
+# Check if result is correct
+sum(gpa2pca$rotation[,1]^2) # Orthonormal
+```
+
+```{r matrixSetUp, echo = FALSE}
+gpa2$scholarship = ifelse(gpa2$colgpa > quantile(gpa2$colgpa, 0.8), 1, 0)
+logReg <- glm(scholarship ~ pc1 + pc2 + pc3 + pc4 + pc5, data = gpa2, family = binomial)
+predictions <- predict(logReg, type = "response")
+```
+
+#### Confusion / Classfication Matrix
+
+##### Table
+```{r classMatrix, echo = TRUE}
+# predictions is your variable from predict(...)
+gpa2$pred_scholarship <- ifelse(predictions >= 0.5, 1, 0)
+
+# Confusion Matrix with caret
+# confusionMatrix(data = as.factor(gpa2$pred_scholarship), 
+#                 reference = as.factor(gpa2$scholarship))
+
+# Base R
+tbl <- table(gpa2$pred_scholarship, # Rows
+             gpa2$scholarship) # Columns
+dimnames(tbl) <- list(Predicted = c("No Scholarship", "Scholarship"),
+                      Actual = c("No Scholarship", "Scholarship"))
+tbl
+```
+
+##### Statistics
+```{r confMatStats, echo = TRUE}
+# Sensitivity : 
+TP <- tbl[2,2]
+TN <- tbl[1,1]
+FP <- tbl[2,1]
+FN <- tbl[1,2]
+```
+
+###### Classification Accuracy
+```{r classAcc, echo = TRUE}
+# Classification Accuracy
+(TP+TN)/(TP+TN+FP+FN)
+```
+
+###### Sensitivity
+```{r sensitivity, echo = TRUE}
+# Sensitivity
+TP/(TP+FN)
+```
+
+###### Precision
+```{r precision, echo = TRUE}
+# Precision
+TP/(TP+FP)
+```
+
+###### Specificity
+```{r specificity, echo = TRUE}
+# Specificity
+TN/(TN+FP)
+```
+
+## Prescriptive Analytics
+
+### Linear Optimisation
+
+#### Table
+
+##### 2 Variables
+
+Let $X_1$ be ..., $X_2$ be ... 
+
+Maximize total daily profit using decision variables $X_1$, $X_2$ | Profit = 6000 $X_1$ + 15000 $X_2$
+--- | --- 
+Subject to |  
+Labor Time Constraint | 0.5$X_1$ + 2$X_2$ $\leq$ 72
+Machine Time Constraint | 2$X_1$ + 1.5$X_2$ $\leq$ 48
+Non-Negativity Constraint 1 | $X_1$ + $\quad$ $\geq$ 0
+Non-Negativity Constraint 2 | $\quad$ + $X_2$ $\geq$ 0
+
+##### 3 Variables
+
+Let $X_1$ be ..., $X_2$ be ... and $X_3$ be ...
+
+Maximize total daily profit using decision variables $X_1$, $X_2$, $X_3$ | Profit = 6000 $X_1$ + 15000 $X_2$ + 23000 $X_3$
+--- | --- 
+Subject to |  
+Labor Time Constraint | 0.5$X_1$ + 2$X_2$ + 4$X_3$ $\leq$ 72
+Machine Time Constraint | 2$X_1$ + 1.5$X_2$ + 1$X_3$ $\leq$ 48
+Non-Negativity Constraint 1 | $X_1$ + $\quad$ + $\quad$ $\geq$ 0
+Non-Negativity Constraint 2 | $\quad$ + $X_2$ + $\quad$ $\geq$ 0
+Non-Negativity Constraint 3 | $\quad$ + $\quad$ + $X_3$ $\geq$ 0
+
+##### 4 Variables
+
+Let $X_1$ be ..., $X_2$ be ... and $X_3$ be ... and $X_4$ be ...
+
+Maximize total daily profit using decision variables $X_1$, $X_2$, $X_3$, $X_4$ | Profit = 6000 $X_1$ + 15000 $X_2$ + 23000 $X_3$ + 5000$X_4$
+--- | --- 
+Subject to |  
+Labor Time Constraint | 0.5$X_1$ + 2$X_2$ + 4$X_3$ + 5$X_4$ $\leq$ 72
+Machine Time Constraint | 2$X_1$ + 1.5$X_2$ + 1$X_3$ + 4$X_4$ $\leq$ 48
+Non-Negativity Constraint 1 | $X_1$ + $\quad$ + $\quad$ + $\quad$ $\geq$ 0
+Non-Negativity Constraint 2 | $\quad$ + $X_2$ + $\quad$ + $\quad$ $\geq$ 0
+Non-Negativity Constraint 3 | $\quad$ + $\quad$ + $X_3$ + $\quad$ $\geq$ 0
+Non-Negativity Constraint 4 | $\quad$ + $\quad$ + $\quad$ + $X_4$ $\geq$ 0
+Binary, Integer, Non-Negativity Constraints | $X_1$ to $X_4$ all binary, integers and ≥0
+
+#### lpSolve
+- Yes, there are feasible solutions. The optimal solution is given as $X_1$ = 72, $X_2$ = 6, $X_3$ = 0. This optimal production plan suggests ... . The maximised daily profit is $38100.
+- The optimal ___ is (x) = (), (y) = () which gives you ().
+
+##### Function
+```{r LinearOptimisation, echo = TRUE}
+obj.fn <- c(6000, 15000, 23000)
+const.mat <- matrix(c(0.5, 2, 4, 2, 1.5, 1), ncol = 3, byrow = TRUE)
+const.dir <- c("<=", "<=")
+const.rhs <- c(72, 48)
+
+#lp() to find output - change to min when finding minimum output
+lp.solution <- lpSolve::lp("max", obj.fn, const.mat, const.dir, const.rhs, 
+                           # int.vec = c(1, 2, 3), # For Integer Optimisation
+                           compute.sens = TRUE
+                           )
+
+lp.solution # Optimal solution output
+lp.solution$solution # Optimal solution inputs
+```
+
+##### Sensitivity Analysis (Upper / Lower Bound)
+- If the () is in the range of (-$\infty$, 500), it is optimal to ...
+```{r sens, echo = TRUE}
+# Inclusive of upper and lower bound
+cbind(lp.solution$sens.coef.from, lp.solution$sens.coef.to)
+```
+
+##### Shadow Prices / Duals
+- The breakeven price of one additional () is ().
+- It is not possible for () to prepare more (x) without reducing his optimal () as he has already (). If he were to produce more (x) by taking () that were supposed to be used for (y), he would no longer achieve the optimal (). If he wanted to prepare more (), he would either have to increase the amount of () he can acquire, or raise the profit gained from () to at least (coeff.to) which means pricing the () to at least ().
+```{r shadow, echo = TRUE}
+lp.solution$duals
+```
+
+Logical Statements | Constraint
+--- | --- 
+If A, then B | B $\ge$ A
+If not A, then B | B $\ge$ (1-A)
+If A, then not B | (1-B) $\ge$ A
+If A, then B and C | (B+C) $\ge$ 2A
+If A and B, then C | (A+B-C) $\le$ 1 
+If A or B, then C | C $\ge$ (A+B)
+
+NOTE: For If (A and B, then C), C can be True without A and B being True as well!!
+
+<script type="text/javascript">
+  // When the document is fully rendered...
+  $(document).ready(function() {
+    // ...select all header elements...
+    $('h1, h2, h3, h4, h5').each(function() {
+      // ...and add an id to them corresponding to their 'titles'
+      $(this).attr('id', $(this).html());
+    });
+  });
+</script>
